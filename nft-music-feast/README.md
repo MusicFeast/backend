@@ -1,1 +1,1 @@
-# free-horses-backend
+# Music Feast back end, details soon
