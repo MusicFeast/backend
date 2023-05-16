@@ -1,0 +1,1 @@
+/home/hrpalencia/project_rust/musicFest/MusicFeast/target/wasm32-unknown-unknown/release/music_feast_contract.wasm: /home/hrpalencia/project_rust/musicFest/MusicFeast/src/event.rs /home/hrpalencia/project_rust/musicFest/MusicFeast/src/lib.rs

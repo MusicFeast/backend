@@ -36,7 +36,7 @@ use near_sdk::{
 use near_sdk::collections::{LazyOption, UnorderedMap, UnorderedSet};
 
 /* custon codigo */
-use near_sdk::json_types::{/*ValidAccountId,*/ U128, /*U64*/};
+use near_sdk::json_types::{/*ValidAccountId,*/ U128, U64};
 
 use serde::Serialize;
 use serde::Deserialize;
@@ -50,13 +50,14 @@ pub const TOKEN_DELIMETER: char = ':';
 pub const TITLE_DELIMETER: &str = " #";
 pub const VAULT_FEE: u128 = 500;
 
+
 const GAS_FOR_RESOLVE_TRANSFER: Gas = Gas(10_000_000_000_000);
 const GAS_FOR_NFT_TRANSFER_CALL: Gas = Gas(40_000_000_000_000); //GAS_FOR_NFT_TRANSFER_CALL(30_000_000_000_000) + GAS_FOR_RESOLVE_TRANSFER;
-const GAS_FOR_NFT_APPROVE: Gas = Gas(10_000_000_000_000);
-const GAS_FOR_MINT: Gas = Gas(90_000_000_000_000);
-const NO_DEPOSIT: Balance = 0;
-const MAX_PRICE: Balance = 1_000_000_000 * 10u128.pow(24);
-
+//const GAS_FOR_NFT_APPROVE: Gas = Gas(10_000_000_000_000);
+//const GAS_FOR_MINT: Gas = Gas(90_000_000_000_000);
+//const NO_DEPOSIT: Balance = 0;
+//const MAX_PRICE: Balance = 1_000_000_000 * 10u128.pow(24);
+const CURRENT_TRANSACTION_FEE: Balance = 200;
 
 pub type TokenSeriesId = String;
 
@@ -93,17 +94,29 @@ trait NonFungibleTokenResolverExt {
 }
 
 
+
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct TokenSeries {
     desc_series: String,
 	metadata: TokenMetadata,
 	creator_id: AccountId,
 	tokens: UnorderedSet<TokenId>,
-    price: Option<Balance>,
+    objects_mint: UnorderedSet<String>,
+    price: Option<f64>,
     is_mintable: bool,
-    royalty: HashMap<AccountId, u32>
+    royalty: HashMap<AccountId, u32>,
+    royalty_buy: HashMap<String, u32>
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct RoyaltyBuy {
+	artist_id: String,
+	porcentaje: String,
+    amount: String,
+    amount_usd: String,
+    tax: String
+}
 
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
@@ -121,8 +134,19 @@ pub struct TokenSeriesJson2 {
     metadata: TokenMetadata,
 	creator_id: AccountId,
     price: Option<Balance>,
+    price_usd: Option<f64>,
     is_mintable: bool,
     royalty: HashMap<AccountId, u32>
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct TokenSeriesJson3 {
+    token_series_id: TokenSeriesId,
+	metadata: TokenMetadata,
+	creator_id: AccountId,
+    royalty: HashMap<AccountId, u32>,
+    transaction_fee: U128
 }
 
 
@@ -139,7 +163,10 @@ pub struct TokensView {
 pub struct ArtistObject {
 	id: u128,
     name: String,
+    wallet: AccountId,
+    next_collection: i128,
 }
+
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
@@ -176,13 +203,18 @@ pub struct Contract {
     /* codigo costumizado */
     owner_id: AccountId,
     list_admin: UnorderedSet<AccountId>,
+    list_vip: UnorderedSet<AccountId>,
     maestro_artist: UnorderedMap<u128, ArtistObject>,
     id_artist: u128,
-    maestro_type_token: UnorderedMap<u128, TypeTokenObject>,
-    id_type_token: u128,
+    id_type_token_series: u128,
+    type_token_series: UnorderedMap<u128, TypeTokenObject>,
+    id_objects: u128,
+    id_serie: u128,
     token_series_by_id: UnorderedMap<TokenSeriesId, TokenSeries>,
     restrictions: UnorderedMap<String, RestrictionsObject>,
     vault_id: AccountId,
+    black_list_reedemer: UnorderedSet<String>,
+    tasa: f64,
 }
 
 const DATA_IMAGE_SVG_NEAR_ICON: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 288 288'%3E%3Cg id='l' data-name='l'%3E%3Cpath d='M187.58,79.81l-30.1,44.69a3.2,3.2,0,0,0,4.75,4.2L191.86,103a1.2,1.2,0,0,1,2,.91v80.46a1.2,1.2,0,0,1-2.12.77L102.18,77.93A15.35,15.35,0,0,0,90.47,72.5H87.34A15.34,15.34,0,0,0,72,87.84V201.16A15.34,15.34,0,0,0,87.34,216.5h0a15.35,15.35,0,0,0,13.08-7.31l30.1-44.69a3.2,3.2,0,0,0-4.75-4.2L96.14,186a1.2,1.2,0,0,1-2-.91V104.61a1.2,1.2,0,0,1,2.12-.77l89.55,107.23a15.35,15.35,0,0,0,11.71,5.43h3.13A15.34,15.34,0,0,0,216,201.16V87.84A15.34,15.34,0,0,0,200.66,72.5h0A15.35,15.35,0,0,0,187.58,79.81Z'/%3E%3C/g%3E%3C/svg%3E";
@@ -196,11 +228,15 @@ enum StorageKey {
     Approval,
     /*codigo costumizado*/
     AdminKey,
+    VipKey,
     ArtistKey,
-    TypeTokenKey,
+    TypeTokenSeriesKey,
     RestrictionsKeys,
     TokenSeriesById,
     TokensBySeriesInner { token_series: String },
+    TokensByObjectsInner { token_series: String },
+    BlackListReedemerKey,
+    TokensPerOwner { account_hash: Vec<u8> },
 }
 
 #[near_bindgen]
@@ -240,13 +276,18 @@ impl Contract {
             /* codigo costumizado */
             owner_id: owner_id,
             list_admin: UnorderedSet::new(StorageKey::AdminKey),
+            list_vip: UnorderedSet::new(StorageKey::VipKey),
             maestro_artist: UnorderedMap::new(StorageKey::ArtistKey),
             id_artist: 0,
-            maestro_type_token: UnorderedMap::new(StorageKey::TypeTokenKey),
-            id_type_token: 0,
+            id_type_token_series: 0,
+            type_token_series: UnorderedMap::new(StorageKey::TypeTokenSeriesKey),
+            id_objects: 0,
+            id_serie: 0,
             token_series_by_id: UnorderedMap::new(StorageKey::TokenSeriesById),
             restrictions: UnorderedMap::new(StorageKey::RestrictionsKeys),
             vault_id: vault_id,
+            black_list_reedemer: UnorderedSet::new(StorageKey::BlackListReedemerKey),
+            tasa: 0.0,
         }
     }
 
@@ -294,14 +335,58 @@ impl Contract {
 
     }
 
-    pub fn add_artist(&mut self, name: String) {
+    // cargar usuarios a la lista de administradores
+    // solo los administradores pueden usar esta funcion
+    pub fn add_vip(&mut self, account_id: AccountId) {
+        assert!(self.owner_id == env::signer_account_id() || self.list_admin.contains(&env::signer_account_id()), "Only administrator");
+        self.list_vip.insert(&account_id.clone());
+
+        env::log_str(
+            &json!({
+                "type": "add_vip",
+                "params": {
+                    "account_id": account_id.to_string()
+                }
+            })
+            .to_string(),
+        );
+
+    }
+
+    pub fn is_vip(&self, account_id: AccountId) -> bool {
+        self.list_vip.contains(&account_id)
+    } 
+
+    pub fn add_black_list_reedemer(&mut self, type_token: String) {
+        assert!(self.owner_id == env::signer_account_id() || self.list_admin.contains(&env::signer_account_id()), "Only administrator");
+        self.black_list_reedemer.insert(&type_token.clone());
+
+        env::log_str(
+            &json!({
+                "type": "add_black_list_reedemer",
+                "params": {
+                    "type_token": type_token
+                }
+            })
+            .to_string(),
+        );
+
+    }
+
+    pub fn add_artist(&mut self, name: String, wallet: AccountId) {
         assert!(self.owner_id == env::signer_account_id() || self.list_admin.contains(&env::signer_account_id()), "Only administrator");
         
         let id_artist: u128 = self.id_artist + 1;
 
+        if !is_valid_account_id(wallet.as_bytes()) {
+            env::panic_str("Not valid account_id for wallet");
+        };
+
         let data_artist = ArtistObject {
             id: id_artist,
             name: name.clone(),
+            wallet: wallet.clone(),
+            next_collection: 1
         };
 
         self.maestro_artist.insert(&data_artist.id, &data_artist);
@@ -313,34 +398,90 @@ impl Contract {
                 "type": "add_artist",
                 "params": {
                     "id": id_artist.to_string(),
-                    "name": name
+                    "name": name,
+                    "wallet": wallet.to_string(),
+                    "collection": 1,
                 }
             })
             .to_string(),
         );
     }
 
+    pub fn update_artist(&mut self, artist_id: u128, name: Option<String>, wallet: Option<AccountId>) {
+        assert!(self.owner_id == env::signer_account_id() || self.list_admin.contains(&env::signer_account_id()), "Only administrator");
+        
+        let mut artist = self.maestro_artist.get(&artist_id).expect("artist not exist");
+
+        if name.is_some() {
+            artist.name = name.unwrap().clone(); 
+        }
+        
+        if wallet.is_some() {
+            if !is_valid_account_id(wallet.as_ref().unwrap().as_bytes()) {
+                env::panic_str("Not valid account_id for wallet");
+            };
+            artist.wallet = wallet.unwrap().clone();
+        }
+
+        self.maestro_artist.insert(&artist_id, &artist);
+
+        env::log_str(
+            &json!({
+                "type": "update_artist",
+                "params": {
+                    "artist_id": artist_id.to_string(),
+                    "name": artist.name.to_string(),
+                    "wallet": artist.wallet.to_string(),
+                }
+            })
+            .to_string(),
+        );
+    }
+
+    pub fn next_collection(&mut self, artist_id: u128) {
+        assert!(self.owner_id == env::signer_account_id() || self.list_admin.contains(&env::signer_account_id()), "Only administrator");
+        
+        let mut artist = self.maestro_artist.get(&artist_id).expect("artist not exist");
+
+        artist.next_collection += 1;
+
+        self.maestro_artist.insert(&artist_id, &artist);
+
+        env::log_str(
+            &json!({
+                "type": "next_collection",
+                "params": {
+                    "artist_id": artist_id.to_string(),
+                    "next_collection": artist.next_collection.to_string()
+                }
+            })
+            .to_string(),
+        );
+    }
+
+
     pub fn get_artist(self) -> Vec<ArtistObject> {
         self.maestro_artist.iter().map(|(_k, v)| { v }).collect()
     }
 
-    pub fn add_type_token(&mut self, description: String) {
+
+    pub fn add_type_token_series(&mut self, description: String) {
         assert!(self.owner_id == env::signer_account_id() || self.list_admin.contains(&env::signer_account_id()), "Only administrator");
         
-        let id_type_token: u128 = self.id_type_token + 1;
+        let id_type_token: u128 = self.id_type_token_series + 1;
 
         let data_type_token = TypeTokenObject {
             id: id_type_token,
             description: description.clone(),
         };
 
-        self.maestro_type_token.insert(&data_type_token.id, &data_type_token);
+        self.type_token_series.insert(&data_type_token.id, &data_type_token);
 
-        self.id_type_token = id_type_token;
+        self.id_type_token_series = id_type_token;
 
         env::log_str(
             &json!({
-                "type": "add_type_token",
+                "type": "add_type_token_series",
                 "params": {
                     "id": id_type_token.to_string(),
                     "description": description
@@ -350,14 +491,16 @@ impl Contract {
         );
     }
 
-    pub fn get_type_token(self) -> Vec<TypeTokenObject> {
-        self.maestro_type_token.iter().map(|(_k, v)| {v}).collect()
+
+    pub fn get_type_token_series(self) -> Vec<TypeTokenObject> {
+        self.type_token_series.iter().map(|(_k, v)| {v}).collect()
     }
+
 
     pub fn add_restriction(&mut self, token_id_s: u128, token_id_r: u128) {
         assert!(self.owner_id == env::signer_account_id() || self.list_admin.contains(&env::signer_account_id()), "Only administrator");
-        assert!(self.maestro_type_token.get(&token_id_s).is_some(), "Token_id_s not exist");
-        assert!(self.maestro_type_token.get(&token_id_r).is_some(), "Token_id_r not exist");
+        assert!(self.type_token_series.get(&token_id_s).is_some(), "Token_id_s not exist");
+        assert!(self.type_token_series.get(&token_id_r).is_some(), "Token_id_r not exist");
         assert!(self.restrictions.get(&token_id_s.to_string()).is_none(), "The requested token already has a constraint.");
 
         let data_restriction = RestrictionsObject {
@@ -384,26 +527,182 @@ impl Contract {
         self.restrictions.iter().map(|(_k, v)| {v}).collect()
     }
 
+    pub fn update_tasa(&mut self, tasa: f64) -> f64 {
+        assert!(self.owner_id == env::signer_account_id() || self.list_admin.contains(&env::signer_account_id()), "Only administrator");        
+        assert!(tasa > 0.0, "La tasa debe ser mayor a 0");
+        
+        self.tasa = tasa;
+
+        env::log_str(
+            &json!({
+                "type": "update_tasa",
+                "params": {
+                    "tasa": self.tasa
+                }
+            })
+            .to_string(),
+        );
+        self.tasa
+    }
+
+    pub fn get_tasa(self) -> f64 {
+        self.tasa
+    }
+
+   #[payable]
+    pub fn update_nft_series(&mut self, 
+        token_series_id: TokenSeriesId, 
+        title: Option<String>,
+        description: Option<String>,
+        media: Option<String>,
+        price: Option<f64>,
+        royalty: Option<HashMap<AccountId, u32>>,
+        royalty_buy: Option<HashMap<String, u32>>,
+    ) -> TokenSeriesJson {
+        assert!(self.owner_id == env::signer_account_id() || self.list_admin.contains(&env::signer_account_id()), "Only administrator");
+
+        //let initial_storage_usage = env::storage_usage();
+        
+
+        let mut nft_serie = self.token_series_by_id.get(&token_series_id).expect("tonken serie id not exist");
+        if title.is_some() { nft_serie.metadata.title = title; }
+        if description.is_some() { nft_serie.metadata.description = description; }
+        if media.is_some() { nft_serie.metadata.media = media; }
+        if price.is_some() {
+            assert_eq!(
+                nft_serie.is_mintable,
+                true,
+                "Token series is not mintable"
+            );
+            
+            if price.unwrap() > 0.0 {
+                let porcentaje_adicional: f64 = 1.05;
+                let price_final: f64 = price.unwrap() * porcentaje_adicional; 
+                nft_serie.price = Some(price_final);
+            } else {
+                nft_serie.price = None;
+            }
+        }
+
+        if royalty_buy.is_some() {
+            let mut total_perpetual = 0;
+            let mut total_accounts = 0;
+            let royalty_buy_res: HashMap<String, u32> = if let Some(royalty_buy) = royalty_buy {
+                for (k, v) in royalty_buy.iter() {
+                    if self.maestro_artist.get(&*k.parse::<u128>().as_ref().unwrap()).is_none() && *k.parse::<u128>().as_ref().unwrap() > 0 {
+                        env::panic_str("Not valid artist_id for royalty");
+                    };
+                    total_perpetual += v;
+                    total_accounts += 1;
+                }
+                royalty_buy
+            } else {
+                HashMap::new()
+            };
+
+            assert!(total_accounts <= 10, "royalty_buy exceeds 10 accounts");
+
+            assert!(
+                total_perpetual <= 10000,
+                "Exceeds maximum royalty_buy -> 10000",
+            );
+            nft_serie.royalty_buy = royalty_buy_res;
+        }
+        
+        if royalty.is_some() {
+            let mut total_perpetual = 0;
+            let mut total_accounts = 0;
+            let royalty_res: HashMap<AccountId, u32> = if let Some(royalty) = royalty {
+                for (k , v) in royalty.iter() {
+                    if !is_valid_account_id(k.as_bytes()) {
+                        env::panic_str("Not valid account_id for royalty");
+                    };
+                    total_perpetual += *v;
+                    total_accounts += 1;
+                }
+                royalty
+            } else {
+                HashMap::new()
+            };
+
+            assert!(total_accounts <= 10, "royalty exceeds 10 accounts");
+
+            assert!(
+                total_perpetual <= 9000,
+                "Exceeds maximum royalty -> 9000",
+            );
+            nft_serie.royalty = royalty_res;
+        }
+
+        self.token_series_by_id.insert(&token_series_id, &nft_serie);
+
+        let precio: Option<String> = if nft_serie.price.is_some() {
+            Some(nft_serie.price.unwrap().to_string())
+        } else {
+            None
+        };
+
+        env::log_str(
+            &json!({
+                "type": "update_nft_series",
+                "params": {
+                    "token_series_id": token_series_id,
+                    "desc_series": nft_serie.desc_series.clone(),
+                    "token_metadata": nft_serie.metadata.clone(),
+                    "creator_id": nft_serie.creator_id.clone(),
+                    "price": precio,
+                    "royalty": nft_serie.royalty.clone(),
+                    "royalty_buy": nft_serie.royalty_buy.clone(),
+                }
+            })
+            .to_string(),
+        );
+
+        //refund_deposit(env::storage_usage() - initial_storage_usage, 0);
+
+
+        TokenSeriesJson {
+            token_series_id,
+			metadata: nft_serie.metadata.clone(),
+			creator_id: nft_serie.creator_id.clone(),
+            royalty: nft_serie.royalty,
+		}
+    }
+ 
+
     #[payable]
     pub fn nft_series(
         &mut self,
         artist_id: u128,
-        token_id: u128,
+        type_token_id: u128,
+        objects: bool,
         token_metadata: TokenMetadata,
-        price: Option<U128>,
+        objects_ids: Option<Vec<String>>,
+        price: Option<f64>,
         royalty: Option<HashMap<AccountId, u32>>,
+        royalty_buy: Option<HashMap<String, u32>>,
     ) -> TokenSeriesJson {
         assert!(self.owner_id == env::signer_account_id() || self.list_admin.contains(&env::signer_account_id()), "Only administrator");
-        assert!(self.maestro_artist.get(&artist_id).is_some(), "Artist_id not exist");
+        assert!((self.tasa > 0.0), "Tasa debe ser mayor a 0");
+        let data_artist = self.maestro_artist.get(&artist_id).expect("Artist_id not exist");
         
-        let type_token = self.maestro_type_token.get(&token_id).expect("Token_id not exist");
+        let type_token = self.type_token_series.get(&type_token_id).expect("type_token_id not exist");
 
         let initial_storage_usage = env::storage_usage();
         let caller_id = env::signer_account_id();
 
-        let mut token_series_id = format!("{}|{}", artist_id, token_id);
-        if token_id > 6 {
-            token_series_id = format!("{}|{}|{}", artist_id, token_id, self.token_series_by_id.len());
+        let mut token_series_id: String;
+
+        if objects {
+            self.id_objects += 1;
+            token_series_id = format!("{}|{}|{}|{}", artist_id, type_token_id, data_artist.next_collection, self.id_objects.to_string());
+        } else {
+            token_series_id = format!("{}|{}|1", artist_id, type_token_id);
+            if type_token_id > 1 && type_token_id <= 6 {
+                token_series_id = format!("{}|{}|{}", artist_id, type_token_id, data_artist.next_collection);
+            } else if type_token_id > 6 {
+                token_series_id = format!("{}|{}|{}|{}", artist_id, type_token_id, data_artist.next_collection, self.id_serie.to_string());
+            }
         }
 
         assert!(
@@ -414,9 +713,32 @@ impl Contract {
         let title = token_metadata.title.clone();
         assert!(title.is_some(), "token_metadata.title is required");
         
-
+        
         let mut total_perpetual = 0;
         let mut total_accounts = 0;
+        let royalty_res_buy =  if let Some(royalty_buy) = royalty_buy {
+            for (k, v) in royalty_buy.iter() {
+                if self.maestro_artist.get(&*k.parse::<u128>().as_ref().unwrap()).is_none() && *k.parse::<u128>().as_ref().unwrap() > 0 {
+                    env::panic_str("Not valid artist_id for royalty");
+                };
+                total_perpetual += v;
+                total_accounts += 1;
+            }
+            royalty_buy
+        } else {
+            HashMap::new()
+        };
+
+        assert!(total_accounts <= 10, "royalty_buy exceeds 10 accounts");
+
+        assert!(
+            total_perpetual <= 10000,
+            "Exceeds maximum royalty_buy -> 10000",
+        );
+
+
+        total_perpetual = 0;
+        total_accounts = 0;
         let royalty_res: HashMap<AccountId, u32> = if let Some(royalty) = royalty {
             for (k , v) in royalty.iter() {
                 if !is_valid_account_id(k.as_bytes()) {
@@ -437,16 +759,20 @@ impl Contract {
             "Exceeds maximum royalty -> 9000",
         );
 
-        let price_res: Option<u128> = if price.is_some() {
-            assert!(
-                price.unwrap().0 < MAX_PRICE,
-                "price higher than {}",
-                MAX_PRICE
-            );
-            Some(price.unwrap().0)
+        let price_res: Option<f64> = if price.is_some() {
+            let porcentaje_adicional: f64 = 1.05;
+            let price_final: f64 = price.unwrap() * porcentaje_adicional; 
+            Some(price_final)
         } else {
             None
         };
+
+        if objects_ids.is_some() && objects == false {
+            for item in objects_ids.clone().unwrap().iter() {
+                assert!(item.split("|").next().unwrap().to_string() == artist_id.to_string(), "The object does not belong to the selected artist");
+                self.token_series_by_id.get(&item).expect("token objects series id not exist");
+            }
+        }
 
         self.token_series_by_id.insert(&token_series_id, &TokenSeries{
             desc_series: type_token.description.clone(),
@@ -459,20 +785,38 @@ impl Contract {
                 .try_to_vec()
                 .unwrap(),
             ),
+            objects_mint: UnorderedSet::new(
+                StorageKey::TokensByObjectsInner {
+                    token_series: token_series_id.clone(),
+                }
+                .try_to_vec()
+                .unwrap(),
+            ),
             price: price_res,
             is_mintable: true,
             royalty: royalty_res.clone(),
+            royalty_buy: royalty_res_buy.clone(),
         });
+
+        if objects_ids.is_some() && objects == false {
+            let mut data_serie = self.token_series_by_id.get(&token_series_id).expect("token series id no existe");
+            for item in objects_ids.unwrap().iter() {
+                data_serie.objects_mint.insert(&item.to_string());
+            }   
+            self.token_series_by_id.insert(&token_series_id, &data_serie);
+        }
+        
 
         env::log_str(
             &json!({
                 "type": "nft_create_series",
                 "params": {
                     "token_series_id": token_series_id.to_string(),
+                    "objects": objects,
                     "desc_series": type_token.description.to_string(),
                     "token_metadata": token_metadata,
                     "creator_id": caller_id.to_string(),
-                    "price": price,
+                    "price": price_res,
                     "royalty": royalty_res
                 }
             })
@@ -488,46 +832,295 @@ impl Contract {
             royalty: royalty_res,
 		}
     }
-    
-
+//near call nft16.musicfeast.testnet nft_buy '{"token_series_id": "11|1|1"}'  --accountId hpalencia.testnet --deposit 1
     #[payable]
     pub fn nft_buy(
         &mut self, 
-        token_series_id: TokenSeriesId
+        token_series_id: TokenSeriesId,
+        receiver_id: Option<AccountId>
     ) -> TokenId {
+        //token_series_id.split("|").collect::<Vec<&str>>()[2];
+        
+        /*account_id: TokenSeriesId,
+        artist_id: TokenMetadata,
+        porcentaje: u32,*/
+        let initial_storage_usage = env::storage_usage();
+        
         let token_series = self.token_series_by_id.get(&token_series_id).expect("Token series not exist");
-        let price: u128 = token_series.price.expect("not for sale");
+        let artist_id = token_series_id.split("|").next().unwrap().to_string();
+        let price: f64 = token_series.price.expect("not for sale");
         let attached_deposit = env::attached_deposit();
-        assert!(
-            attached_deposit >= price,
-            "attached deposit is less than price : {}",
-            price
-        );
-        let receiver_id: AccountId = env::signer_account_id();
- 
-        let restriction = self.restrictions.get(&token_series.metadata.reference.unwrap().to_string());
-        if restriction.is_some() {
-            let tokens_per_owner = self.tokens.tokens_per_owner.as_ref().expect(
-                "Could not find tokens_per_owner when calling a method on the enumeration standard.",
+        let receiver_id: AccountId = if let Some(receiver_id) = receiver_id {
+            if !is_valid_account_id(receiver_id.as_bytes()) {
+                env::panic_str("Not valid account_id for royalty");
+            };
+            receiver_id
+        } else {
+            env::predecessor_account_id()
+        };
+        let type_token = token_series_id.split("|").collect::<Vec<&str>>()[1].to_string();
+
+        let price_near: f64 = price / self.tasa;
+        let price_yocto: u128 = (price_near * 10u128.pow(24) as f64) as u128;
+
+        let tax: u128 = (price_yocto * 500)/10000;  //0.5% del precio
+        let amount_final: u128 = price_yocto - tax;
+        
+        let tax_usd: f64 = price * 0.05; //0.5% del precio
+        let amount_usd_final: f64 = price - tax_usd;
+
+        let royalty_buy: Vec<RoyaltyBuy> = token_series.royalty_buy.iter().map(|(k, v)| 
+            {
+                let mut tax_final: String = "0".to_string();
+                let mut amount: String = ((amount_final * (*v as u128))/10000).to_string();
+                let mut amount_usd: String =  (amount_usd_final * (*v as f64 / 10000.0)).to_string();
+
+                if *k.parse::<u128>().as_ref().unwrap() == 0 {
+                    tax_final = (tax/2).to_string();
+                }
+
+                if *k == artist_id {
+                    amount = (((amount_final * (*v as u128))/10000) + (tax/2)).to_string();
+                    amount_usd = ((amount_usd_final * (*v as f64 / 10000.0)) + (tax_usd/2.0)).to_string();
+                }
+
+                RoyaltyBuy{
+                    artist_id: k.clone(),
+                    porcentaje: v.to_string(),
+                    amount: amount,
+                    amount_usd: amount_usd, 
+                    tax: tax_final,
+                }
+            }).collect();
+
+        if self.list_vip.contains(&env::signer_account_id()) && type_token == "1" {
+            assert!(
+                attached_deposit >= 5000000000000000000000,
+                "attached deposit is less than price : {}",
+                "5000000000000000000000"    
             );
-            let token_set = tokens_per_owner.get(&receiver_id).expect("You do not have the corresponding token to buy the requested token");
-            let token_id_r: String = restriction.unwrap().token_id_r.to_string();
-            let artist_id = token_series_id.split("|").next().unwrap().to_string();
-            let valit_token_owner = token_set
-                .iter()
-                .find(|token_id| token_id.split(":").next().unwrap().to_string() == format!("{}|{}",artist_id, token_id_r).to_string());
-            assert!(valit_token_owner != None
-                , "You do not have the corresponding token to buy the requested token");
+
+            let token_id: TokenId = self._nft_mint_series(token_series_id, receiver_id.clone());
+
+            for item in token_series.objects_mint.iter() {
+                self._nft_mint_series(item.to_string(), receiver_id.clone());
+            }
+
+            refund_deposit(env::storage_usage() - initial_storage_usage, 0);
+
+            NearEvent::log_nft_mint(
+                receiver_id.to_string(),
+                vec![token_id.clone()],
+                Some(json!({"price": "0"}).to_string())
+            );
+
+            env::log_str(
+                &json!({
+                    "type": "nft_buy",
+                    "params": {
+                        "artista": artist_id.clone(),   
+                        "tasa": self.tasa,
+                        "price_usd": "0".to_string(),
+                        "price": "0".to_string(),
+                        //"amount_artist": "0".to_string(), // 70% del artista
+                        //"amount_musicfeast": "0".to_string(), // 30% musicfeast
+                        //"tax_artist": "0".to_string(),
+                        //"tax_musicfeast": "0".to_string(),
+                        "royalty": royalty_buy,
+                    }
+                })
+                .to_string(),
+            );
+
+            token_id
+        } else {    
+            assert!(
+                attached_deposit >= (price_yocto + 50_000_000_000_000_000_000_000u128),
+                "attached deposit is less than price : {}",
+                (price_yocto + 50_000_000_000_000_000_000_000u128)
+            );
+
+            let restriction = self.restrictions.get(&token_series.metadata.reference.unwrap().to_string());
+            
+            if restriction.is_some() {
+                let tokens_per_owner = self.tokens.tokens_per_owner.as_ref().expect(
+                    "Could not find tokens_per_owner when calling a method on the enumeration standard.",
+                );
+                let token_set = tokens_per_owner.get(&receiver_id).expect("You do not have the corresponding token to buy the requested token");
+                let token_id_r: String = restriction.unwrap().token_id_r.to_string();
+                
+                let valit_token_owner = token_set
+                    .iter()
+                    .find(|token_id| token_id.split(":").next().unwrap().to_string() == format!("{}|{}|1",artist_id, token_id_r).to_string());
+                assert!(valit_token_owner != None
+                    , "You do not have the corresponding token to buy the requested token");
+            }
+
+            let token_id: TokenId = self._nft_mint_series(token_series_id, receiver_id.clone());
+
+            for item in token_series.objects_mint.iter() {
+                self._nft_mint_series(item.to_string(), receiver_id.clone());
+            }
+
+            //let for_vault = price as u128 * VAULT_FEE / 10_000u128;
+            //let price_deducted = price - for_vault;
+            //Promise::new(token_series.creator_id).transfer(price_deducted);
+            
+            Promise::new(self.vault_id.clone()).transfer(price_yocto);
+            
+            
+            refund_deposit(env::storage_usage() - initial_storage_usage, price_yocto);
+
+            NearEvent::log_nft_mint(
+                receiver_id.to_string(),
+                vec![token_id.clone()],
+                Some(json!({"price": price.to_string()}).to_string())
+            );
+
+            env::log_str(
+                &json!({
+                    "type": "nft_buy",
+                    "params": {
+                        "artista": artist_id.clone(),   
+                        "tasa": self.tasa,
+                        "price_usd": price.to_string(),
+                        "price": price_yocto.to_string(),
+                        //"amount_artist": (((amount_final * 7000)/10000) + (tax/2)).to_string(), // 70% del artista
+                        //"amount_musicfeast": ((amount_final * 3000)/10000).to_string(), // 30% musicfeast
+                        //"tax_artist": "0",
+                        //"tax_musicfeast": (tax/2).to_string(),
+                        "royalty": royalty_buy,
+                    }
+                })
+                .to_string(),
+            );
+
+            token_id
         }
+    }
 
-        let token_id: TokenId = self._nft_mint_series(token_series_id, receiver_id.clone());
+    pub fn auto_swap_complete(
+        &mut self, 
+        artist_id: String,
+        amount_near: U128,
+        tax_near: U128,
+        amount_usd: String,
+        ft_token: String,
+    ) {
+        assert_eq!(env::predecessor_account_id(), self.vault_id.clone(), "no autorizado");
+        
+        env::log_str(
+            &json!({
+                "type": "auto_swap_complete",
+                "params": {
+                    "artista": artist_id.clone(),
+                    "amount_near": amount_near.0.to_string(),
+                    "tax_near": tax_near.0.to_string(),
+                    "amount_usd": amount_usd.to_string(),
+                    "ft_token": ft_token,
+                }
+            })
+            .to_string(),
+        );
+    }
 
-        let for_vault = price as u128 * VAULT_FEE / 10_000u128;
-        let price_deducted = price - for_vault;
-        Promise::new(token_series.creator_id).transfer(price_deducted);
-        Promise::new(self.vault_id.clone()).transfer(for_vault);
+    /*
+    pub fn auto_swap_ini(
+        &mut self, 
+        artist_id: String, 
+        amount_near: U128,
+        tax_near: U128,
+        ft_token: String,
+    ) {
+        //assert_eq!(env::predecessor_account_id(), self.vault_id.clone(), "no autorizado");
+        
+        env::log_str(
+            &json!({
+                "type": "auto_swap_ini",
+                "params": {
+                    "artista": artist_id.clone(),
+                    "amount_near": amount_near.0.to_string(),
+                    "tax_near": tax_near.0.to_string(),
+                    "ft_token": ft_token,
+                }
+            })
+            .to_string(),
+        );
+    }*/
 
-        token_id
+    /*pub fn auto_swap_end(
+        &mut self, 
+        artist_id: String,
+        amount_near: U128,
+        tax_near: U128,
+        amount_usd: U128,
+        ft_token: String,
+    ) {
+        //assert_eq!(env::predecessor_account_id(), self.vault_id.clone(), "no autorizado");
+        
+        env::log_str(
+            &json!({
+                "type": "auto_swap_end",
+                "params": {
+                    "artista": artist_id.clone(),
+                    "amount_near": amount_near.0.to_string(),
+                    "tax_near": tax_near.0.to_string(),
+                    "amount_usd": amount_usd.0.to_string(),
+                    "ft_token": ft_token,
+                }
+            })
+            .to_string(),
+        );
+    }*/
+
+    pub fn auto_swap_error(
+        &mut self, 
+        artist_id: String, 
+        amount_near: U128,
+        amount_usd: f64,
+        tax_near: U128,
+        arg: String,
+    ) {
+        assert_eq!(env::predecessor_account_id(), self.vault_id.clone(), "no autorizado");
+        
+        env::log_str(
+            &json!({
+                "type": "auto_swap_error",
+                "params": {
+                    "artista": artist_id.clone(),
+                    "amount_near": amount_near.0.to_string(),
+                    "amount_usd": amount_usd.to_string(),
+                    "tax_near": tax_near.0.to_string(),
+                    "arg": arg
+                }
+            })
+            .to_string(),
+        );
+    }
+
+    pub fn auto_swap_transfer_error(
+        &mut self, 
+        artist_id: String, 
+        amount: String,
+        amount_near: String,
+        ft_token: String,
+        arg: String,
+    ) {
+        assert_eq!(env::predecessor_account_id(), self.vault_id.clone(), "no autorizado");
+        
+        env::log_str(
+            &json!({
+                "type": "auto_swap_transfer_error",
+                "params": {
+                    "artista": artist_id.clone(),
+                    "amount": amount.to_string(),
+                    "amount_near": amount_near.to_string(),
+                    "ft_token": ft_token.to_string(),
+                    "arg": arg
+                }
+            })
+            .to_string(),
+        );
     }
 
 
@@ -537,9 +1130,19 @@ impl Contract {
         token_series_id: TokenSeriesId, 
         receiver_id: AccountId
     ) -> TokenId {
+        let initial_storage_usage = env::storage_usage();
+
         let token_series = self.token_series_by_id.get(&token_series_id).expect("Token series not exist");
         assert_eq!(env::predecessor_account_id(), token_series.creator_id.clone(), "not creator");
         let token_id: TokenId = self._nft_mint_series(token_series_id, receiver_id.clone());
+
+        refund_deposit(env::storage_usage() - initial_storage_usage, 0);
+
+        NearEvent::log_nft_mint(
+            receiver_id.to_string(),
+            vec![token_id.clone()],
+            None,
+        );
 
         token_id
     }
@@ -600,8 +1203,8 @@ impl Contract {
     }*/
 
 
-    #[payable]
-    pub fn put_nft_series_price(&mut self, token_series_id: TokenSeriesId, price: Option<U128>) -> Option<U128> {
+   /* #[payable]
+    pub fn put_nft_series_price(&mut self, token_series_id: TokenSeriesId, price: Option<f64>) -> Option<f64> {
         assert_one_yocto();
 
         let mut token_series = self.token_series_by_id.get(&token_series_id).expect("Token series not exist");
@@ -620,18 +1223,16 @@ impl Contract {
         if price.is_none() {
             token_series.price = None;
         } else {
-            assert!(
-                price.unwrap().0 < MAX_PRICE,
-                "Price higher than {}",
-                MAX_PRICE
-            );
-            token_series.price = Some(price.unwrap().0);
+            let porcentaje_adicional: f64 = 1.05;
+            let price_final: f64 = price.unwrap() * porcentaje_adicional; 
+            token_series.price = Some(price_final);
         }
 
         self.token_series_by_id.insert(&token_series_id, &token_series);
 
         return price;
-    }
+    }*/
+
 
     fn _nft_mint_series(
         &mut self, 
@@ -658,7 +1259,7 @@ impl Contract {
         let token_id = format!("{}{}{}", &token_series_id, TOKEN_DELIMETER, num_tokens + 1);
         token_series.tokens.insert(&token_id);
         self.token_series_by_id.insert(&token_series_id, &token_series);
-        let title: String = format!("{} {} {}", token_series.metadata.title.unwrap().clone(), TITLE_DELIMETER, (num_tokens + 1).to_string());
+        let title: String = format!("{} {} {} {} {}", token_series.metadata.title.unwrap().clone(), TITLE_DELIMETER, token_series_id, TITLE_DELIMETER, (num_tokens + 1).to_string());
         
         let token_metadata = Some(TokenMetadata {
             title: Some(title),          
@@ -677,15 +1278,40 @@ impl Contract {
 
         let token_owner_id: AccountId = receiver_id;
       
-        self.tokens.internal_mint(token_id.clone(), token_owner_id, token_metadata);
+        //self.tokens.internal_mint(token_id.clone(), token_owner_id, token_metadata);
+        //let owner_id: AccountId = receiver_id.clone();
+        self.tokens.owner_by_id.insert(&token_id, &token_owner_id);
+
+        self.tokens
+            .token_metadata_by_id
+            .as_mut()
+            .and_then(|by_id| by_id.insert(&token_id, &token_metadata.as_ref().unwrap()));
+
+         if let Some(tokens_per_owner) = &mut self.tokens.tokens_per_owner {
+             let mut token_ids = tokens_per_owner.get(&token_owner_id).unwrap_or_else(|| {
+                 UnorderedSet::new(StorageKey::TokensPerOwner {
+                     account_hash: env::sha256(&token_owner_id.as_bytes()),
+                 })
+             });
+             token_ids.insert(&token_id);
+             tokens_per_owner.insert(&token_owner_id, &token_ids);
+         }
 
         token_id
+
     }
 
+
+
     #[payable]
-    pub fn nft_burn(&mut self, token_id: TokenId) {
+    pub fn nft_burn(&mut self, token_id: TokenId, reedemer: bool) {
         assert_one_yocto();
         
+        if reedemer {
+            let type_token = token_id.split(":").next().unwrap().to_string().split("|").collect::<Vec<&str>>()[1].to_string();
+            assert_eq!(self.black_list_reedemer.contains(&type_token), false, "El token seleccionado no se puede quemar por esta funcion");
+        }
+
         let owner_id = self.tokens.owner_by_id.get(&token_id).unwrap();
         
         assert_eq!(
@@ -716,10 +1342,23 @@ impl Contract {
 
         NearEvent::log_nft_burn(
             owner_id.to_string(),
-            vec![token_id],
+            vec![token_id.clone()],
             None,
             None,
         );
+
+        env::log_str(
+            &json!({
+                "type": "nft_burn",
+                "params": {
+                    "owner_id": owner_id.clone(),
+                    "token_id": token_id.clone(),
+                    "reedemer": reedemer
+                }
+            })
+            .to_string(),
+        );
+
     }
 
 
@@ -729,7 +1368,7 @@ impl Contract {
         copies_availables    
 	}
 
-    pub fn get_nft_series_single(&self, token_series_id: TokenSeriesId) -> TokenSeriesJson {
+    /*pub fn get_nft_series_single(&self, token_series_id: TokenSeriesId) -> TokenSeriesJson {
 		let token_series = self.token_series_by_id.get(&token_series_id).expect("Series does not exist");
 		TokenSeriesJson{
             token_series_id,
@@ -737,7 +1376,7 @@ impl Contract {
 			creator_id: token_series.creator_id,
             royalty: token_series.royalty,
 		}
-	}
+	}*/
 
     pub fn get_nft_series(
         &self,
@@ -756,13 +1395,22 @@ impl Contract {
             .iter()
             .skip(start_index as usize)
             .take(limit)
-            .map(|(token_series_id, token_series)| TokenSeriesJson2 {
-                token_series_id: token_series_id.clone(),
-                metadata: token_series.metadata,
-                creator_id: token_series.creator_id,
-                price: token_series.price,
-                is_mintable: token_series.is_mintable,
-                royalty: token_series.royalty
+            .map(|(token_series_id, token_series)| {
+                let mut price_yocto: Option<u128> = None;
+                if token_series.price.is_some() {
+                    let price_near: f64 = token_series.price.unwrap() / self.tasa;
+                    price_yocto = Some((price_near * 10u128.pow(24) as f64) as u128);
+                }
+                
+                TokenSeriesJson2 {
+                    token_series_id: token_series_id.clone(),
+                    metadata: token_series.metadata,
+                    creator_id: token_series.creator_id,
+                    price: price_yocto,
+                    price_usd: token_series.price,
+                    is_mintable: token_series.is_mintable,
+                    royalty: token_series.royalty
+                }
             })
             .collect()
     }
@@ -907,6 +1555,36 @@ impl Contract {
 
     pub fn nft_total_supply(&self) -> U128 {
         (self.tokens.owner_by_id.len() as u128).into()
+    }
+
+    pub fn nft_supply_for_series(&self, token_series_id: TokenSeriesId) -> U64 {
+        self.token_series_by_id.get(&token_series_id).expect("Token series not exist").tokens.len().into()
+    }
+
+    pub fn nft_get_series_single(&self, token_series_id: TokenSeriesId) -> TokenSeriesJson3 {
+		let token_series = self.token_series_by_id.get(&token_series_id).expect("Series does not exist");
+        
+		TokenSeriesJson3{
+            token_series_id,
+			metadata: token_series.metadata,
+			creator_id: token_series.creator_id,
+            royalty: token_series.royalty,
+            transaction_fee: U128::from(CURRENT_TRANSACTION_FEE)
+		}
+	}
+
+    pub fn nft_get_series_price(self, token_series_id: TokenSeriesId) -> Option<U128> {
+        let price = self.token_series_by_id.get(&token_series_id).unwrap().price;
+
+        match price {
+            Some(p) => {
+                let price_near: f64 = p / self.tasa;
+                let price_yocto: u128 = (price_near * 10u128.pow(24) as f64) as u128;
+                return Some(U128::from(price_yocto + 100_000_000_000_000_000_000_000u128))
+                //return Some(U128::from(price_yocto))
+            },
+            None => return None
+        };
     }
 
     pub fn nft_tokens(&self, from_index: Option<U128>, limit: Option<u64>) -> Vec<TokenCustom> {
@@ -1110,7 +1788,6 @@ fn refund_deposit(storage_used: u64, extra_spend: Balance) {
         Promise::new(env::predecessor_account_id()).transfer(refund);
     }
 }
-
 
 
 

@@ -361,6 +361,8 @@ impl Contract {
         self.owner_id = owner_id;
     }
 
+    
+
     // Approved contracts
     #[payable]
     pub fn add_approved_nft_contract_ids(&mut self, nft_contract_ids: Vec<AccountId>) {

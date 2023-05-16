@@ -55,13 +55,13 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
         let signer_id = env::signer_account_id();
         assert_ne!(
             env::current_account_id(), nft_contract_id,
-            "Paras: nft_on_approve should only be called via cross-contract call"
+            "nft_on_approve should only be called via cross-contract call"
         );
-        assert_eq!(owner_id, signer_id, "Paras: owner_id should be signer_id");
+        assert_eq!(owner_id, signer_id, "owner_id should be signer_id");
 
         assert!(
             self.approved_nft_contract_ids.contains(&nft_contract_id),
-            "Paras: nft_contract_id is not approved"
+            "nft_contract_id is not approved"
         );
 
         let MarketArgs {
@@ -151,7 +151,7 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
                 self.paras_nft_contracts.contains(&nft_contract_id),
                 "accepting offer series for Paras NFT only"
             );
-            assert!(price.is_some(), "Paras: Price is not specified (for check)");
+            assert!(price.is_some(), "Price is not specified (for check)");
 
             self.internal_accept_offer_series(
                 nft_contract_id,
@@ -190,7 +190,7 @@ impl NonFungibleTokenApprovalsReceiver for Contract {
         } else if market_type == "accept_trade" {
 
             assert!(buyer_id.is_some(), "Account id is not specified");
-            assert!(buyer_nft_contract_id.is_some(), "Paras: Buyer NFT contract id is not specified");
+            assert!(buyer_nft_contract_id.is_some(), "Buyer NFT contract id is not specified");
             assert!(buyer_token_id.is_some(), "Buyer token id is not specified");
 
             self.internal_accept_trade(

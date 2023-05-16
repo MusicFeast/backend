@@ -1,0 +1,1 @@
+/home/hrpalencia/project_rust/musicFest/MarketPlace/target/wasm32-unknown-unknown/release/paras_marketplace_contract.wasm: /home/hrpalencia/project_rust/musicFest/MarketPlace/src/external.rs /home/hrpalencia/project_rust/musicFest/MarketPlace/src/lib.rs /home/hrpalencia/project_rust/musicFest/MarketPlace/src/nft_callbacks.rs
