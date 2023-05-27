@@ -675,9 +675,9 @@ impl Contract {
         &mut self,
         artist_id: u128,
         type_token_id: u128,
-        objects: bool,
+        //objects: bool,
         token_metadata: TokenMetadata,
-        objects_ids: Option<Vec<String>>,
+        //objects_ids: Option<Vec<String>>,
         price: Option<f64>,
         royalty: Option<HashMap<AccountId, u32>>,
         royalty_buy: Option<HashMap<String, u32>>,
@@ -691,19 +691,16 @@ impl Contract {
         let initial_storage_usage = env::storage_usage();
         let caller_id = env::signer_account_id();
 
-        let mut token_series_id: String;
+        let mut token_series_id: String = format!("{}|{}|1", artist_id, type_token_id);
 
-        if objects {
-            self.id_objects += 1;
-            token_series_id = format!("{}|{}|{}|{}", artist_id, type_token_id, data_artist.next_collection, self.id_objects.to_string());
+        if type_token_id > 1 && type_token_id <= 6 {
+            token_series_id = format!("{}|{}|{}", artist_id, type_token_id, data_artist.next_collection);
+        } else if type_token_id == 7 {
+            token_series_id = format!("{}|{}|{}|E{}", artist_id, type_token_id, data_artist.next_collection, self.id_serie.to_string());
         } else {
-            token_series_id = format!("{}|{}|1", artist_id, type_token_id);
-            if type_token_id > 1 && type_token_id <= 6 {
-                token_series_id = format!("{}|{}|{}", artist_id, type_token_id, data_artist.next_collection);
-            } else if type_token_id > 6 {
-                token_series_id = format!("{}|{}|{}|{}", artist_id, type_token_id, data_artist.next_collection, self.id_serie.to_string());
-            }
+            env::panic_str("contract internal error");
         }
+        
 
         assert!(
             self.token_series_by_id.get(&token_series_id).is_none(),
@@ -767,12 +764,12 @@ impl Contract {
             None
         };
 
-        if objects_ids.is_some() && objects == false {
+        /*if objects_ids.is_some() && objects == false {
             for item in objects_ids.clone().unwrap().iter() {
                 assert!(item.split("|").next().unwrap().to_string() == artist_id.to_string(), "The object does not belong to the selected artist");
                 self.token_series_by_id.get(&item).expect("token objects series id not exist");
             }
-        }
+        }*/
 
         self.token_series_by_id.insert(&token_series_id, &TokenSeries{
             desc_series: type_token.description.clone(),
@@ -798,13 +795,13 @@ impl Contract {
             royalty_buy: royalty_res_buy.clone(),
         });
 
-        if objects_ids.is_some() && objects == false {
+        /*if objects_ids.is_some() && objects == false {
             let mut data_serie = self.token_series_by_id.get(&token_series_id).expect("token series id no existe");
             for item in objects_ids.unwrap().iter() {
                 data_serie.objects_mint.insert(&item.to_string());
             }   
             self.token_series_by_id.insert(&token_series_id, &data_serie);
-        }
+        }*/
         
 
         env::log_str(
@@ -812,7 +809,7 @@ impl Contract {
                 "type": "nft_create_series",
                 "params": {
                     "token_series_id": token_series_id.to_string(),
-                    "objects": objects,
+                    "objects": false,//objects,
                     "desc_series": type_token.description.to_string(),
                     "token_metadata": token_metadata,
                     "creator_id": caller_id.to_string(),
@@ -832,6 +829,89 @@ impl Contract {
             royalty: royalty_res,
 		}
     }
+
+
+    #[payable]
+    pub fn nft_objects(
+        &mut self,
+        token_metadata: TokenMetadata,
+        token_series_id_assignment: TokenSeriesId
+    ) -> String {
+        let initial_storage_usage = env::storage_usage();
+        let caller_id = env::predecessor_account_id();
+
+        let artist_id = token_series_id_assignment.split("|").collect::<Vec<&str>>()[0].to_string();
+        let type_token_id = token_series_id_assignment.split("|").collect::<Vec<&str>>()[1].to_string();
+        let collection = token_series_id_assignment.split("|").collect::<Vec<&str>>()[2].to_string();
+        let type_token = self.type_token_series.get(&type_token_id.parse::<u128>().as_ref().unwrap()).expect("type_token_id not exist");
+        
+        let mut data_serie = self.token_series_by_id.get(&token_series_id_assignment.clone()).expect("token_series_id_assignment not valid!");
+
+        self.id_objects += 1;
+        let token_object_id: String = format!("{}|{}|{}|O{}", artist_id, type_token_id, collection, self.id_objects.to_string());
+
+        let mut object_metadata: TokenMetadata = token_metadata.clone();
+        object_metadata.copies = None;
+        object_metadata.title = data_serie.metadata.title.clone();
+        object_metadata.media = Some("https://bafybeib3lw55t56pgtciht7z2yyye3qmari766wl5ltbkuj3kbub7utih4.ipfs.w3s.link/burnme.png".to_string());
+        object_metadata.reference = Some(token_series_id_assignment.to_string());
+
+        self.token_series_by_id.insert(&token_object_id, &TokenSeries{
+            desc_series: type_token.description.clone(),
+            metadata: object_metadata.clone(),
+            creator_id: caller_id.clone(),
+            tokens: UnorderedSet::new(
+                StorageKey::TokensBySeriesInner {
+                    token_series: token_object_id.clone(),
+                }
+                .try_to_vec()
+                .unwrap(),
+            ),
+            objects_mint: UnorderedSet::new(
+                StorageKey::TokensByObjectsInner {
+                    token_series: token_object_id.clone(),
+                }
+                .try_to_vec()
+                .unwrap(),
+            ),
+            price: None,
+            is_mintable: true,
+            royalty: HashMap::new(),
+            royalty_buy: HashMap::new(),
+        });
+
+        
+        //agregando el nft camgeable al evento
+        
+        data_serie.objects_mint.insert(&token_object_id.clone()); 
+        self.token_series_by_id.insert(&token_series_id_assignment.clone(), &data_serie);
+        
+        
+        refund_deposit(env::storage_usage() - initial_storage_usage, 0);
+
+        env::log_str(
+            &json!({
+                "type": "nft_objects",
+                "params": {
+                    "token_series_id": token_object_id.clone(),
+                    "token_metadata": object_metadata.clone(),
+                    "desc_series": type_token.description.to_string(),
+                    "creator_id": caller_id.to_string(),
+                    "objects": true,
+                    "price": 0,
+                    "royalty": [],
+                    "royalty_buy": []
+                }
+            })
+            .to_string(),
+        );
+
+		
+        token_object_id.to_string()
+    }
+
+
+
 //near call nft16.musicfeast.testnet nft_buy '{"token_series_id": "11|1|1"}'  --accountId hpalencia.testnet --deposit 1
     #[payable]
     pub fn nft_buy(
@@ -1073,7 +1153,7 @@ impl Contract {
         );
     }*/
 
-    pub fn auto_swap_error(
+    /*pub fn auto_swap_error(
         &mut self, 
         artist_id: String, 
         amount_near: U128,
@@ -1096,7 +1176,35 @@ impl Contract {
             })
             .to_string(),
         );
+    }*/
+
+    pub fn auto_swap_ajuste_error(
+        &mut self, 
+        artist_id: String, 
+        amount: String,
+        amount_near: String,
+        tax_near: U128,
+        ft_token: String,
+        arg: String,
+    ) {
+        assert_eq!(env::predecessor_account_id(), self.vault_id.clone(), "no autorizado");
+        
+        env::log_str(
+            &json!({
+                "type": "auto_swap_ajuste_error",
+                "params": {
+                    "artista": artist_id.clone(),
+                    "amount": amount.to_string(),
+                    "amount_near": amount_near.to_string(),
+                    "tax_near": tax_near.0.to_string(),
+                    "ft_token": ft_token.to_string(),
+                    "arg": arg
+                }
+            })
+            .to_string(),
+        );
     }
+
 
     pub fn auto_swap_transfer_error(
         &mut self, 
