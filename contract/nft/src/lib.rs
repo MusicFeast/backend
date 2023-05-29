@@ -556,6 +556,7 @@ impl Contract {
         description: Option<String>,
         media: Option<String>,
         price: Option<f64>,
+        extra: Option<String>,
         royalty: Option<HashMap<AccountId, u32>>,
         royalty_buy: Option<HashMap<String, u32>>,
     ) -> TokenSeriesJson {
@@ -583,6 +584,8 @@ impl Contract {
                 nft_serie.price = None;
             }
         }
+
+        if extra.is_some() { nft_serie.metadata.extra = extra; }
 
         if royalty_buy.is_some() {
             let mut total_perpetual = 0;

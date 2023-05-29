@@ -1,1 +1,1 @@
-/home/hrpalencia/project_rust/musicFest/MusicFeast/target/wasm32-unknown-unknown/release/music_feast_contract.wasm: /home/hrpalencia/project_rust/musicFest/MusicFeast/src/event.rs /home/hrpalencia/project_rust/musicFest/MusicFeast/src/lib.rs
+/mnt/d/respaldo\ ubuntu/project_rust/musicFest/backend/contract/nft/target/wasm32-unknown-unknown/release/music_feast_contract.wasm: /mnt/d/respaldo\ ubuntu/project_rust/musicFest/backend/contract/nft/src/event.rs /mnt/d/respaldo\ ubuntu/project_rust/musicFest/backend/contract/nft/src/lib.rs
