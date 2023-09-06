@@ -694,9 +694,11 @@ impl Contract {
         let initial_storage_usage = env::storage_usage();
         let caller_id = env::signer_account_id();
 
-        let mut token_series_id: String = format!("{}|{}|1", artist_id, type_token_id);
-
-        if type_token_id > 1 && type_token_id <= 6 {
+        let token_series_id: String;
+        
+        if type_token_id == 1 {
+            token_series_id = format!("{}|{}|1", artist_id, type_token_id);
+        } else if type_token_id > 1 && type_token_id <= 6 {
             token_series_id = format!("{}|{}|{}", artist_id, type_token_id, data_artist.next_collection);
         } else if type_token_id == 7 {
             token_series_id = format!("{}|{}|{}|E{}", artist_id, type_token_id, data_artist.next_collection, self.id_serie.to_string());
@@ -856,7 +858,8 @@ impl Contract {
         let mut object_metadata: TokenMetadata = token_metadata.clone();
         object_metadata.copies = None;
         object_metadata.title = data_serie.metadata.title.clone();
-        object_metadata.media = Some("https://bafybeib3lw55t56pgtciht7z2yyye3qmari766wl5ltbkuj3kbub7utih4.ipfs.w3s.link/burnme.png".to_string());
+        object_metadata.description = data_serie.metadata.description.clone();
+        object_metadata.media = Some("https://globaldv.mypinata.cloud/ipfs/QmWfV239tGfBLZAU2hMYQnjwHcxMp1UKvHWVurTpS3sNKH".to_string());
         object_metadata.reference = Some(token_series_id_assignment.to_string());
 
         self.token_series_by_id.insert(&token_object_id, &TokenSeries{
@@ -991,11 +994,11 @@ impl Contract {
 
             refund_deposit(env::storage_usage() - initial_storage_usage, 0);
 
-            NearEvent::log_nft_mint(
+            /*NearEvent::log_nft_mint(
                 receiver_id.to_string(),
                 vec![token_id.clone()],
                 Some(json!({"price": "0"}).to_string())
-            );
+            );*/
 
             env::log_str(
                 &json!({
@@ -1010,6 +1013,7 @@ impl Contract {
                         //"tax_artist": "0".to_string(),
                         //"tax_musicfeast": "0".to_string(),
                         "royalty": royalty_buy,
+                        //"token_series.objects_mint": token_series.objects_mint.iter().map(|v| v.clone()).collect::<Vec<_>>(),
                     }
                 })
                 .to_string(),
@@ -1054,11 +1058,11 @@ impl Contract {
             
             refund_deposit(env::storage_usage() - initial_storage_usage, price_yocto);
 
-            NearEvent::log_nft_mint(
+            /*NearEvent::log_nft_mint(
                 receiver_id.to_string(),
                 vec![token_id.clone()],
                 Some(json!({"price": price.to_string()}).to_string())
-            );
+            );*/
 
             env::log_str(
                 &json!({
@@ -1073,6 +1077,7 @@ impl Contract {
                         //"tax_artist": "0",
                         //"tax_musicfeast": (tax/2).to_string(),
                         "royalty": royalty_buy,
+                        //"token_series.objects_mint": token_series.objects_mint.iter().map(|v| v.clone()).collect::<Vec<_>>(),
                     }
                 })
                 .to_string(),
@@ -1106,80 +1111,6 @@ impl Contract {
             .to_string(),
         );
     }
-
-    /*
-    pub fn auto_swap_ini(
-        &mut self, 
-        artist_id: String, 
-        amount_near: U128,
-        tax_near: U128,
-        ft_token: String,
-    ) {
-        //assert_eq!(env::predecessor_account_id(), self.vault_id.clone(), "no autorizado");
-        
-        env::log_str(
-            &json!({
-                "type": "auto_swap_ini",
-                "params": {
-                    "artista": artist_id.clone(),
-                    "amount_near": amount_near.0.to_string(),
-                    "tax_near": tax_near.0.to_string(),
-                    "ft_token": ft_token,
-                }
-            })
-            .to_string(),
-        );
-    }*/
-
-    /*pub fn auto_swap_end(
-        &mut self, 
-        artist_id: String,
-        amount_near: U128,
-        tax_near: U128,
-        amount_usd: U128,
-        ft_token: String,
-    ) {
-        //assert_eq!(env::predecessor_account_id(), self.vault_id.clone(), "no autorizado");
-        
-        env::log_str(
-            &json!({
-                "type": "auto_swap_end",
-                "params": {
-                    "artista": artist_id.clone(),
-                    "amount_near": amount_near.0.to_string(),
-                    "tax_near": tax_near.0.to_string(),
-                    "amount_usd": amount_usd.0.to_string(),
-                    "ft_token": ft_token,
-                }
-            })
-            .to_string(),
-        );
-    }*/
-
-    /*pub fn auto_swap_error(
-        &mut self, 
-        artist_id: String, 
-        amount_near: U128,
-        amount_usd: f64,
-        tax_near: U128,
-        arg: String,
-    ) {
-        assert_eq!(env::predecessor_account_id(), self.vault_id.clone(), "no autorizado");
-        
-        env::log_str(
-            &json!({
-                "type": "auto_swap_error",
-                "params": {
-                    "artista": artist_id.clone(),
-                    "amount_near": amount_near.0.to_string(),
-                    "amount_usd": amount_usd.to_string(),
-                    "tax_near": tax_near.0.to_string(),
-                    "arg": arg
-                }
-            })
-            .to_string(),
-        );
-    }*/
 
     pub fn auto_swap_ajuste_error(
         &mut self, 
@@ -1249,101 +1180,61 @@ impl Contract {
 
         refund_deposit(env::storage_usage() - initial_storage_usage, 0);
 
-        NearEvent::log_nft_mint(
+        /*NearEvent::log_nft_mint(
             receiver_id.to_string(),
             vec![token_id.clone()],
             None,
-        );
+        );*/
 
         token_id
     }
 
-    
-    
-    /*#[payable]
-    pub fn nft_mint_and_approve(
+
+    #[payable]
+    pub fn nft_mint_for(
         &mut self, 
-        token_series_id: TokenSeriesId, 
-        account_id: AccountId,
-        msg: Option<String>,
-    ) -> Option<Promise> {
+        token_series_id: TokenSeriesId,
+        nft_quantity: i64,
+        receiver_id: AccountId
+    ) -> i64 {
         let initial_storage_usage = env::storage_usage();
 
         let token_series = self.token_series_by_id.get(&token_series_id).expect("Token series not exist");
-        assert_eq!(env::predecessor_account_id(), token_series.creator_id.clone(), "not creator");
-        let token_id: TokenId = self._nft_mint_series(token_series_id, token_series.creator_id.clone());
+        assert!(nft_quantity <= 40, "No se pueden mintear mas de 40 nft en un solo llamado");
+        assert!(env::predecessor_account_id() == token_series.creator_id.clone() || self.owner_id == env::signer_account_id() || self.list_admin.contains(&env::signer_account_id()), "Only administrator");
+        
+        
+        for _i in 0..nft_quantity {
+            self._nft_mint_series(token_series_id.clone(), receiver_id.clone());
+        }
 
-        let approvals_by_id = self.tokens.approvals_by_id.as_mut().unwrap();
-
-        let approved_account_ids =
-            &mut approvals_by_id.get(&token_id).unwrap_or_else(|| HashMap::new());
-        let account_id: AccountId = account_id.into();
-        let approval_id: u64 =
-            self.tokens.next_approval_id_by_id.as_ref().unwrap().get(&token_id).unwrap_or_else(|| 1u64);
-        approved_account_ids.insert(account_id.clone(), approval_id);
-
-        approvals_by_id.insert(&token_id, &approved_account_ids);
-
-        self.tokens.next_approval_id_by_id.as_mut().unwrap().insert(&token_id, &(approval_id + 1));
-
+        
         refund_deposit(env::storage_usage() - initial_storage_usage, 0);
 
-        NearEvent::log_nft_mint(
-            token_series.creator_id.to_string(),
-            vec![token_id.clone()],
-            None,
+        nft_quantity
+    }
+
+    #[payable]
+    pub fn deliver_gift(
+        &mut self,
+        receiver_id: AccountId
+    ) {       
+        let tokens_per_owner = self.tokens.tokens_per_owner.as_ref().expect(
+            "Could not find tokens_per_owner when calling a method on the enumeration standard.",
         );
+        let token_set = tokens_per_owner.get(&env::predecessor_account_id());
 
-        if let Some(msg) = msg {
-            Some(ext_nft_approval_receiver::ext(account_id)
-            .with_static_gas(env::prepaid_gas() - GAS_FOR_NFT_APPROVE - GAS_FOR_MINT)
-            .nft_on_approve(token_id, token_series.creator_id, approval_id, msg))
-            
-            /*Some(ext_approval_receiver::nft_on_approve(
-                token_id,
-                token_series.creator_id,
-                approval_id,
-                msg,
-                &account_id,
-                NO_DEPOSIT,
-                env::prepaid_gas() - GAS_FOR_NFT_APPROVE - GAS_FOR_MINT,
-            ))*/
-        } else {
-            None
-        }
-    }*/
+        assert!(token_set.is_some(), "No quedan Nft para regalar");
+        
+        let first_idx: usize = 0;
+        let token_id:TokenId = token_set.unwrap().iter()
+            .skip(0 as usize)
+            .take(1)
+            .map(|token_id| token_id).collect::<Vec<_>>()[first_idx].clone();
 
-
-   /* #[payable]
-    pub fn put_nft_series_price(&mut self, token_series_id: TokenSeriesId, price: Option<f64>) -> Option<f64> {
-        assert_one_yocto();
-
-        let mut token_series = self.token_series_by_id.get(&token_series_id).expect("Token series not exist");
-        assert_eq!(
-            env::predecessor_account_id(),
-            token_series.creator_id,
-            "Creator only"
-        );
-
-        assert_eq!(
-            token_series.is_mintable,
-            true,
-            "Token series is not mintable"
-        );
-
-        if price.is_none() {
-            token_series.price = None;
-        } else {
-            let porcentaje_adicional: f64 = 1.05;
-            let price_final: f64 = price.unwrap() * porcentaje_adicional; 
-            token_series.price = Some(price_final);
-        }
-
-        self.token_series_by_id.insert(&token_series_id, &token_series);
-
-        return price;
-    }*/
-
+        self.tokens.nft_transfer(receiver_id.clone(), token_id , None, None);
+        // self.tokens.nft_transfer(receiver_id.clone(), token_id.clone(), approval_id, memo.clone());
+    }
 
     fn _nft_mint_series(
         &mut self, 
@@ -1387,7 +1278,7 @@ impl Contract {
             reference_hash: token_series.metadata.reference_hash, 
         });
 
-        let token_owner_id: AccountId = receiver_id;
+        let token_owner_id: AccountId = receiver_id.clone();
       
         //self.tokens.internal_mint(token_id.clone(), token_owner_id, token_metadata);
         //let owner_id: AccountId = receiver_id.clone();
@@ -1398,15 +1289,21 @@ impl Contract {
             .as_mut()
             .and_then(|by_id| by_id.insert(&token_id, &token_metadata.as_ref().unwrap()));
 
-         if let Some(tokens_per_owner) = &mut self.tokens.tokens_per_owner {
-             let mut token_ids = tokens_per_owner.get(&token_owner_id).unwrap_or_else(|| {
-                 UnorderedSet::new(StorageKey::TokensPerOwner {
-                     account_hash: env::sha256(&token_owner_id.as_bytes()),
-                 })
-             });
-             token_ids.insert(&token_id);
-             tokens_per_owner.insert(&token_owner_id, &token_ids);
-         }
+        if let Some(tokens_per_owner) = &mut self.tokens.tokens_per_owner {
+            let mut token_ids = tokens_per_owner.get(&token_owner_id).unwrap_or_else(|| {
+                UnorderedSet::new(StorageKey::TokensPerOwner {
+                    account_hash: env::sha256(&token_owner_id.as_bytes()),
+                })
+            });
+            token_ids.insert(&token_id);
+            tokens_per_owner.insert(&token_owner_id, &token_ids);
+        }
+        
+        NearEvent::log_nft_mint(
+            receiver_id.to_string(),
+            vec![token_id.clone()],
+            None,
+        );
 
         token_id
 
@@ -1419,8 +1316,8 @@ impl Contract {
         assert_one_yocto();
         
         if reedemer {
-            let type_token = token_id.split(":").next().unwrap().to_string().split("|").collect::<Vec<&str>>()[1].to_string();
-            assert_eq!(self.black_list_reedemer.contains(&type_token), false, "El token seleccionado no se puede quemar por esta funcion");
+            let type_token = token_id.to_string().contains("o");
+            assert_eq!(type_token, false, "El token seleccionado no se puede quemar por esta funcion");
         }
 
         let owner_id = self.tokens.owner_by_id.get(&token_id).unwrap();
@@ -1472,6 +1369,20 @@ impl Contract {
 
     }
 
+    pub fn reedemer_approved(&self, token_id: TokenId) {
+        assert!(self.owner_id == env::predecessor_account_id() || self.list_admin.contains(&env::predecessor_account_id()), "Only administrator");
+
+        env::log_str(
+            &json!({
+                "type": "reedemer_approved",
+                "params": {
+                    "user_id": env::predecessor_account_id(),
+                    "token_id": token_id.clone(),
+                }
+            })
+            .to_string(),
+        );
+    }
 
     pub fn get_nft_series_copies_availables(&self, token_series_id: TokenSeriesId) -> u64 {
 		let token_series = self.token_series_by_id.get(&token_series_id).expect("Series does not exist");
